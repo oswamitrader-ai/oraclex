@@ -12,7 +12,10 @@
   "dependencies": {
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "recharts": "^2.15.4"
+    "recharts": "^2.15.4",
+    "@supabase/supabase-js": "^2.110.8",
+    "lucide-react": "^0.383.0",
+    "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",
