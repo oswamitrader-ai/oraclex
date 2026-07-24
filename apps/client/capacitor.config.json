@@ -1,0 +1,9 @@
+{
+  "appId": "com.foresight.app",
+  "appName": "OracleX",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "cleartext": true
+  }
+}

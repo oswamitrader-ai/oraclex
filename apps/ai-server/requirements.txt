@@ -1,0 +1,7 @@
+opencv-python
+ultralytics
+supabase
+streamlink
+python-dotenv
+flask
+flask-cors
