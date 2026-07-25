@@ -724,7 +724,7 @@ function LiveMarketCard({ m, onTrade, balance }) {
           </div>
         </div>
         
-        <AICounterOverlay type={m.ai_counter_type} dbCount={m.ai_current_count} />
+        <AICounterOverlay type={m.ai_counter_type} dbCount={m.ai_current_count} aiLineY={m.ai_line_y} />
         {/* Live Badge over video */}
         <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(255, 60, 60, 0.9)', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 4, backdropFilter: 'blur(4px)' }}>
           <span style={{ width: 6, height: 6, background: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
