@@ -103,31 +103,28 @@ def get_stream_url(video_url, video_type):
     if video_type == 'youtube':
         # yt-dlp com extração de cookies do navegador do usuário
         # Isso burla o "Sign in to confirm you're not a bot"
-        browsers_to_try = ['chrome', 'edge', 'brave', 'firefox', 'opera']
-        
-        for browser in browsers_to_try:
-            try:
-                ydl_opts = {
-                    'format': 'best', 
-                    'quiet': True,
-                    'cookiesfrombrowser': (browser, ),
-                    'extractor_args': {'youtube': {'player_client': ['web']}}
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info_dict = ydl.extract_info(video_url, download=False)
-                    return info_dict.get('url')
-            except Exception as e:
-                # Se falhar porque não achou o cookie deste navegador ou outro erro, tenta o próximo
-                continue
-                
-        # Fallback sem cookies se nenhum navegador der certo
+        # Vamos usar o cliente "android" do YouTube (mobile) que não exige
+        # desafios complexos de Javascript nem bloqueia facilmente por "bot"
+        try:
+            ydl_opts = {
+                'format': 'best', 
+                'quiet': True,
+                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(video_url, download=False)
+                return info_dict.get('url')
+        except Exception as e:
+            print(f"Erro yt-dlp client android: {e}")
+            
+        # Fallback sem cookies se o android falhar
         try:
             ydl_opts = {'format': 'best', 'quiet': True}
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info_dict = ydl.extract_info(video_url, download=False)
                 return info_dict.get('url')
         except Exception as e:
-            print(f"Erro yt-dlp sem cookies: {e}")
+            print(f"Erro yt-dlp fallback: {e}")
             
         # Fallback para o streamlink antigo
         try:
