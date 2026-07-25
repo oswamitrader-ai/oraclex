@@ -168,7 +168,7 @@ def process_market(market):
     print(f"[{market['title']}] Conectado ao feed! Iniciando rastreamento...")
     
     counted_ids = set()
-    previous_y = {}
+    initial_positions = {}
     last_update_time = time.time()
     current_db_count = market.get('ai_current_count') or 0
     local_count = current_db_count
@@ -181,17 +181,17 @@ def process_market(market):
                 print(f"[{market['title']}] Fim do feed ou erro na leitura.")
                 break
                 
-            # Resize frame para acelerar drasticamente o FPS (Resolve lentidão do vídeo)
+            # Resize frame para acelerar drasticamente o FPS
             frame = cv2.resize(frame, (640, 360))
             h, w = frame.shape[:2]
-            line_y = int(h * 0.6) # Linha horizontal a 60% da altura da tela
                 
             results = model.track(frame, persist=True, classes=[target_class_id], verbose=False)
             annotated_frame = results[0].plot()
             
-            line_color = (0, 255, 0)
-            if time.time() - line_flash_time < 0.2:
-                line_color = (0, 0, 255) # Pisca vermelho quando conta!
+            # Moldura de cor para feedback visual no Admin
+            border_color = (0, 255, 0)
+            if time.time() - line_flash_time < 0.3:
+                border_color = (0, 0, 255) # Pisca vermelho na borda
             
             if results[0].boxes.id is not None:
                 boxes = results[0].boxes
@@ -201,18 +201,24 @@ def process_market(market):
                 for obj_id, coord in zip(ids, coords):
                     cx, cy, cw, ch = coord
                     
-                    if obj_id in previous_y:
-                        # Verifica se o objeto cruzou a linha Y de cima para baixo ou de baixo para cima
-                        if (previous_y[obj_id] < line_y and cy >= line_y) or (previous_y[obj_id] > line_y and cy <= line_y):
-                            if obj_id not in counted_ids:
-                                counted_ids.add(obj_id)
-                                local_count += 1
-                                line_flash_time = time.time()
-                    previous_y[obj_id] = cy
+                    if obj_id not in initial_positions:
+                        initial_positions[obj_id] = (cx, cy)
+                    else:
+                        start_x, start_y = initial_positions[obj_id]
+                        # Calcula a distância que o carro percorreu desde que apareceu na tela
+                        dist = ((cx - start_x)**2 + (cy - start_y)**2)**0.5
                         
-            # Desenha a linha
-            cv2.line(annotated_frame, (0, line_y), (w, line_y), line_color, 2)
-            cv2.putText(annotated_frame, "LINHA DE CONTAGEM", (10, line_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, line_color, 2)
+                        # Se o carro se moveu mais de 10% do tamanho da tela, e não foi contado ainda
+                        # Isso ignora carros estacionados e falhas de frame
+                        if dist > (w * 0.1) and obj_id not in counted_ids:
+                            counted_ids.add(obj_id)
+                            local_count += 1
+                            line_flash_time = time.time()
+                            print(f"[{market['title']}] +1 Carro (Moveu {int(dist)}px). Total: {local_count}")
+                        
+            # Desenha uma borda de feedback na tela do admin
+            cv2.rectangle(annotated_frame, (0,0), (w, h), border_color, 4)
+            cv2.putText(annotated_frame, "IA MONITORANDO MOVIMENTO", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, border_color, 2)
 
             # ANNOTATION & STREAMING: Desenhar caixas no frame e salvar em memória para o Flask
             ret_enc, buffer = cv2.imencode('.jpg', annotated_frame)
