@@ -1,8 +1,44 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, Activity, DollarSign, LogOut, Plus, Check, X, Loader2, Edit2, Trash2, Pause, Play, RefreshCw, Clock } from 'lucide-react';
+import { LayoutDashboard, Users, Activity, DollarSign, LogOut, Plus, Check, X, Loader2, Edit2, Trash2, Pause, Play, RefreshCw, Clock, Bell } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { supabase } from './supabase';
+
+const toastEventEmitter = {
+  listeners: [],
+  emit(toast) { this.listeners.forEach(l => l(toast)); },
+  subscribe(l) { this.listeners.push(l); return () => { this.listeners = this.listeners.filter(cb => cb !== l); }; }
+};
+export const toast = (message, type = 'info') => toastEventEmitter.emit({ id: Date.now(), message, type });
+
+function ToastContainer() {
+  const [toasts, setToasts] = useState([]);
+  useEffect(() => {
+    const unsub = toastEventEmitter.subscribe(t => {
+      setToasts(prev => [...prev, t]);
+      setTimeout(() => {
+        setToasts(prev => prev.filter(x => x.id !== t.id));
+      }, 6000);
+    });
+    return unsub;
+  }, []);
+  return (
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+      <style>{`
+        @keyframes slideInRight {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+      `}</style>
+      {toasts.map(t => (
+        <div key={t.id} className={`p-4 rounded-xl shadow-2xl flex items-center gap-3 text-white font-semibold transition-all pointer-events-auto border-l-4 ${t.type === 'success' ? 'bg-surface border-yes' : t.type === 'warning' ? 'bg-surface border-alert' : 'bg-surface border-accent'}`} style={{animation: 'slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'}}>
+          <Bell className={t.type === 'success' ? 'text-yes' : t.type === 'warning' ? 'text-alert' : 'text-accent'} size={24} />
+          <span>{t.message}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const playAlert = () => {
   try {
@@ -39,6 +75,9 @@ function Sidebar() {
          loadPending();
          if (payload.eventType === 'INSERT' && payload.new.status === 'pending') {
             playAlert();
+            const typeText = payload.new.type === 'withdraw' ? 'SAQUE' : 'DEPÓSITO';
+            const valueText = Number(payload.new.amount).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+            toast(`Novo pedido de ${typeText} pendente: ${valueText}`, 'warning');
          }
       })
       .subscribe();
@@ -631,23 +670,49 @@ function MarketsPage() {
                            <div className="flex items-center justify-center w-full h-full text-text-dim text-sm">Preview do Vídeo</div>
                          )}
                          
-                         {/* Linha de contagem visual */}
-                         <div 
-                            className="absolute left-0 right-0 h-0.5 bg-no pointer-events-none z-10 shadow-[0_0_8px_rgba(255,0,0,1)]"
-                            style={{ top: `${(formData.ai_line_y || 0.6) * 100}%` }}
-                         ></div>
+                         {/* Linha de contagem visual via SVG */}
+                         <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" viewBox="0 0 100 100" preserveAspectRatio="none">
+                            <line 
+                              x1={`${(formData.ai_line_config?.x1 ?? 0) * 100}`} 
+                              y1={`${(formData.ai_line_config?.y1 ?? 0.6) * 100}`} 
+                              x2={`${(formData.ai_line_config?.x2 ?? 1) * 100}`} 
+                              y2={`${(formData.ai_line_config?.y2 ?? 0.6) * 100}`} 
+                              stroke="red" 
+                              strokeWidth="1.5" 
+                              strokeLinecap="round"
+                              style={{ filter: 'drop-shadow(0px 0px 4px red)' }}
+                            />
+                         </svg>
                       </div>
-                      
-                      <div className="mt-4 flex items-center gap-4">
-                        <span className="text-xs font-bold text-text-dim w-12 text-right">Topo</span>
-                        <input 
-                          type="range" 
-                          min="0.1" max="0.9" step="0.01" 
-                          value={formData.ai_line_y || 0.6} 
-                          onChange={e => setFormData({...formData, ai_line_y: parseFloat(e.target.value)})}
-                          className="flex-1 accent-yes"
-                        />
-                        <span className="text-xs font-bold text-text-dim w-12">Fundo</span>
+                      <div className="mt-4 grid grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-text-dim flex justify-between">Início X (Esquerda/Direita) <span>{Math.round((formData.ai_line_config?.x1 ?? 0)*100)}%</span></label>
+                          <input type="range" min="0" max="1" step="0.01" 
+                            value={formData.ai_line_config?.x1 ?? 0} 
+                            onChange={e => setFormData({...formData, ai_line_config: {...(formData.ai_line_config || {y1:0.6,x2:1,y2:0.6}), x1: parseFloat(e.target.value)}})}
+                            className="accent-yes" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-text-dim flex justify-between">Início Y (Cima/Baixo) <span>{Math.round((formData.ai_line_config?.y1 ?? 0.6)*100)}%</span></label>
+                          <input type="range" min="0" max="1" step="0.01" 
+                            value={formData.ai_line_config?.y1 ?? 0.6} 
+                            onChange={e => setFormData({...formData, ai_line_config: {...(formData.ai_line_config || {x1:0,x2:1,y2:0.6}), y1: parseFloat(e.target.value)}})}
+                            className="accent-yes" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-text-dim flex justify-between">Fim X (Esquerda/Direita) <span>{Math.round((formData.ai_line_config?.x2 ?? 1)*100)}%</span></label>
+                          <input type="range" min="0" max="1" step="0.01" 
+                            value={formData.ai_line_config?.x2 ?? 1} 
+                            onChange={e => setFormData({...formData, ai_line_config: {...(formData.ai_line_config || {x1:0,y1:0.6,y2:0.6}), x2: parseFloat(e.target.value)}})}
+                            className="accent-yes" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-text-dim flex justify-between">Fim Y (Cima/Baixo) <span>{Math.round((formData.ai_line_config?.y2 ?? 0.6)*100)}%</span></label>
+                          <input type="range" min="0" max="1" step="0.01" 
+                            value={formData.ai_line_config?.y2 ?? 0.6} 
+                            onChange={e => setFormData({...formData, ai_line_config: {...(formData.ai_line_config || {x1:0,y1:0.6,x2:1}), y2: parseFloat(e.target.value)}})}
+                            className="accent-yes" />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -985,6 +1050,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <ToastContainer />
       <div className="flex min-h-screen bg-bg text-white">
         <Sidebar />
         <main className="flex-1 p-10">

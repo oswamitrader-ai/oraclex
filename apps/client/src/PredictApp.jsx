@@ -448,7 +448,7 @@ function ProbBar({ yes }) {
 /*  AI COUNTER OVERLAY (SIMULATOR & HUD)                               */
 /* ------------------------------------------------------------------ */
 
-function AICounterOverlay({ type, dbCount = 0, aiLineY = 0.6 }) {
+function AICounterOverlay({ type, dbCount = 0, aiLineConfig = {x1:0, y1:0.6, x2:1, y2:0.6} }) {
   const [pulse, setPulse] = useState(false);
   const prevCount = useRef(dbCount);
 
@@ -487,17 +487,18 @@ function AICounterOverlay({ type, dbCount = 0, aiLineY = 0.6 }) {
       </div>
       
       {/* Linha de Contagem */}
-      <div 
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          height: 2,
-          background: 'var(--no)',
-          top: `${aiLineY * 100}%`,
-          boxShadow: '0 0 10px rgba(255, 0, 0, 0.8)'
-        }}
-      ></div>
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', zIndex: 10 }}>
+        <line 
+          x1={`${(aiLineConfig?.x1 ?? 0) * 100}`} 
+          y1={`${(aiLineConfig?.y1 ?? 0.6) * 100}`} 
+          x2={`${(aiLineConfig?.x2 ?? 1) * 100}`} 
+          y2={`${(aiLineConfig?.y2 ?? 0.6) * 100}`} 
+          stroke="var(--no)" 
+          strokeWidth="1.5" 
+          strokeLinecap="round"
+          style={{ filter: 'drop-shadow(0px 0px 8px var(--no))' }}
+        />
+      </svg>
     </div>
   );
 }
@@ -724,7 +725,7 @@ function LiveMarketCard({ m, onTrade, balance }) {
           </div>
         </div>
         
-        <AICounterOverlay type={m.ai_counter_type} dbCount={m.ai_current_count} aiLineY={m.ai_line_y} />
+        <AICounterOverlay type={m.ai_counter_type} dbCount={m.ai_current_count} aiLineConfig={m.ai_line_config} />
         {/* Live Badge over video */}
         <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(255, 60, 60, 0.9)', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 4, backdropFilter: 'blur(4px)' }}>
           <span style={{ width: 6, height: 6, background: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
@@ -892,7 +893,7 @@ function MarketDetail({ m, onBack, initialSide, onTrade, balance }) {
           {(m.video_type === 'ipcam' || m.video_type === 'upload') && (
             <video src={m.video_url} autoPlay muted loop playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           )}
-          <AICounterOverlay type={m.ai_counter_type} dbCount={m.ai_current_count} aiLineY={m.ai_line_y} />
+          <AICounterOverlay type={m.ai_counter_type} dbCount={m.ai_current_count} aiLineConfig={m.ai_line_config} />
         </div>
       ) : (
         <div className="chart-card">
