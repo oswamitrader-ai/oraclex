@@ -168,9 +168,10 @@ def process_market(market):
     print(f"[{market['title']}] Conectado ao feed! Iniciando rastreamento...")
     
     counted_ids = set()
-    initial_positions = {}
+    previous_y = {}
     last_update_time = time.time()
     current_db_count = market.get('ai_current_count') or 0
+    current_line_y_percent = market.get('ai_line_y') or 0.6
     local_count = current_db_count
     line_flash_time = 0
 
@@ -184,14 +185,14 @@ def process_market(market):
             # Resize frame para acelerar drasticamente o FPS
             frame = cv2.resize(frame, (640, 360))
             h, w = frame.shape[:2]
+            line_y = int(h * current_line_y_percent)
                 
             results = model.track(frame, persist=True, classes=[target_class_id], verbose=False)
             annotated_frame = results[0].plot()
             
-            # Moldura de cor para feedback visual no Admin
-            border_color = (0, 255, 0)
+            line_color = (0, 255, 0)
             if time.time() - line_flash_time < 0.3:
-                border_color = (0, 0, 255) # Pisca vermelho na borda
+                line_color = (0, 0, 255) # Pisca vermelho na linha quando conta
             
             if results[0].boxes.id is not None:
                 boxes = results[0].boxes
@@ -201,24 +202,29 @@ def process_market(market):
                 for obj_id, coord in zip(ids, coords):
                     cx, cy, cw, ch = coord
                     
-                    if obj_id not in initial_positions:
-                        initial_positions[obj_id] = (cx, cy)
-                    else:
-                        start_x, start_y = initial_positions[obj_id]
-                        # Calcula a distância que o carro percorreu desde que apareceu na tela
-                        dist = ((cx - start_x)**2 + (cy - start_y)**2)**0.5
+                    top = cy - ch / 2
+                    bottom = cy + ch / 2
+                    
+                    # Verifica se a caixa atual toca a linha
+                    touched_line = (top <= line_y <= bottom)
+                    
+                    # Verifica se pulou a linha (útil se o FPS cair)
+                    jumped_line = False
+                    if obj_id in previous_y:
+                        if (previous_y[obj_id] < line_y and cy >= line_y) or (previous_y[obj_id] > line_y and cy <= line_y):
+                            jumped_line = True
+                            
+                    if (touched_line or jumped_line) and obj_id not in counted_ids:
+                        counted_ids.add(obj_id)
+                        local_count += 1
+                        line_flash_time = time.time()
+                        print(f"[{market['title']}] +1 Veículo (Cruzou a linha). Total: {local_count}")
                         
-                        # Se o carro se moveu mais de 10% do tamanho da tela, e não foi contado ainda
-                        # Isso ignora carros estacionados e falhas de frame
-                        if dist > (w * 0.1) and obj_id not in counted_ids:
-                            counted_ids.add(obj_id)
-                            local_count += 1
-                            line_flash_time = time.time()
-                            print(f"[{market['title']}] +1 Carro (Moveu {int(dist)}px). Total: {local_count}")
+                    previous_y[obj_id] = cy
                         
-            # Desenha uma borda de feedback na tela do admin
-            cv2.rectangle(annotated_frame, (0,0), (w, h), border_color, 4)
-            cv2.putText(annotated_frame, "IA MONITORANDO MOVIMENTO", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, border_color, 2)
+            # Desenha a linha configurada pelo admin
+            cv2.line(annotated_frame, (0, line_y), (w, line_y), line_color, 2)
+            cv2.putText(annotated_frame, "LINHA DE CONTAGEM (ADMIN)", (10, line_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, line_color, 2)
 
             # ANNOTATION & STREAMING: Desenhar caixas no frame e salvar em memória para o Flask
             ret_enc, buffer = cv2.imencode('.jpg', annotated_frame)
@@ -232,6 +238,9 @@ def process_market(market):
                     break
 
                 m_data = check_resp.data[0]
+                
+                # Atualiza a posição da linha caso o admin tenha alterado no painel
+                current_line_y_percent = m_data.get('ai_line_y') or current_line_y_percent
                 
                 if m_data.get('end_date'):
                     end_date = datetime.datetime.fromisoformat(m_data['end_date'].replace('Z', '+00:00'))

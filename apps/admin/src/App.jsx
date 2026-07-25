@@ -302,10 +302,10 @@ function MarketsPage() {
       start_date: m.start_date ? formatDateTimeLocal(m.start_date) : '',
       end_date: m.end_date ? formatDateTimeLocal(m.end_date) : '',
       start_chance: m.start_chance,
-      video_type: m.video_type || null,
       video_url: m.video_url || '',
       ai_counter_type: m.ai_counter_type || 'carros',
-      ai_target_count: m.ai_target_count || 0
+      ai_target_count: m.ai_target_count || 0,
+      ai_line_y: m.ai_line_y !== undefined ? m.ai_line_y : 0.6
     });
     setModalOpen(true);
   }
@@ -328,7 +328,8 @@ function MarketsPage() {
         video_type: formData.video_type,
         video_url: formData.video_url,
         ai_counter_type: formData.ai_counter_type,
-        ai_target_count: parseInt(formData.ai_target_count) || 0
+        ai_target_count: parseInt(formData.ai_target_count) || 0,
+        ai_line_y: parseFloat(formData.ai_line_y) || 0.6
       }).eq('id', formData.id);
     } else {
       await supabase.from('markets').insert({
@@ -343,7 +344,8 @@ function MarketsPage() {
         video_type: formData.video_type,
         video_url: formData.video_url,
         ai_counter_type: formData.ai_counter_type,
-        ai_target_count: parseInt(formData.ai_target_count) || 0
+        ai_target_count: parseInt(formData.ai_target_count) || 0,
+        ai_line_y: parseFloat(formData.ai_line_y) || 0.6
       });
     }
     setModalOpen(false);
@@ -563,6 +565,42 @@ function MarketsPage() {
                       <div>
                         <label className="block text-sm font-semibold text-text-dim mb-1">Alvo para Vitória (Linha de Chegada)</label>
                         <input type="number" min="0" value={formData.ai_target_count} onChange={e => setFormData({...formData, ai_target_count: e.target.value})} placeholder="Ex: 50" className="w-full bg-surface border border-border rounded-lg px-4 py-2 text-white outline-none focus:border-yes" />
+                      </div>
+                    </div>
+                    
+                    <div className="pt-2">
+                      <label className="block text-sm font-semibold text-text-dim mb-2">Linha de Contagem da IA</label>
+                      <p className="text-xs text-text-dim mb-3">Ajuste onde a linha vermelha deve ficar para contar perfeitamente no vídeo.</p>
+                      
+                      <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden border border-border">
+                         {formData.video_type === 'youtube' && formData.video_url ? (
+                           <iframe
+                             className="w-full h-full pointer-events-none opacity-50"
+                             src={`https://www.youtube.com/embed/${formData.video_url.split('v=')[1]?.split('&')[0] || formData.video_url.split('/').pop()}?autoplay=1&mute=1`}
+                             frameBorder="0"
+                             allow="autoplay; encrypted-media"
+                           ></iframe>
+                         ) : (
+                           <div className="flex items-center justify-center w-full h-full text-text-dim text-sm">Preview do Vídeo</div>
+                         )}
+                         
+                         {/* Linha de contagem visual */}
+                         <div 
+                            className="absolute left-0 right-0 h-0.5 bg-no pointer-events-none z-10 shadow-[0_0_8px_rgba(255,0,0,1)]"
+                            style={{ top: `${(formData.ai_line_y || 0.6) * 100}%` }}
+                         ></div>
+                      </div>
+                      
+                      <div className="mt-4 flex items-center gap-4">
+                        <span className="text-xs font-bold text-text-dim w-12 text-right">Topo</span>
+                        <input 
+                          type="range" 
+                          min="0.1" max="0.9" step="0.01" 
+                          value={formData.ai_line_y || 0.6} 
+                          onChange={e => setFormData({...formData, ai_line_y: parseFloat(e.target.value)})}
+                          className="flex-1 accent-yes"
+                        />
+                        <span className="text-xs font-bold text-text-dim w-12">Fundo</span>
                       </div>
                     </div>
                   </div>
