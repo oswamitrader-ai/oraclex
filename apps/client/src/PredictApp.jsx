@@ -449,14 +449,40 @@ function ProbBar({ yes }) {
 /* ------------------------------------------------------------------ */
 
 function AICounterOverlay({ type, dbCount = 0 }) {
+  const [pulse, setPulse] = useState(false);
+  const prevCount = useRef(dbCount);
+
+  useEffect(() => {
+    if (dbCount > prevCount.current) {
+      setPulse(true);
+      setTimeout(() => setPulse(false), 500);
+    }
+    prevCount.current = dbCount;
+  }, [dbCount]);
+
   return (
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       {/* HUD Info */}
-      <div style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(0,0,0,0.7)', border: '1px solid #00ff00', borderRadius: 8, padding: '6px 12px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', backdropFilter: 'blur(4px)' }}>
-        <div style={{ color: '#00ff00', fontSize: 9, fontWeight: 800, letterSpacing: 1 }}>VISÃO COMPUTACIONAL</div>
+      <div style={{ 
+        position: 'absolute', top: 12, right: 12, 
+        background: pulse ? 'rgba(0, 255, 0, 0.2)' : 'rgba(0,0,0,0.7)', 
+        border: pulse ? '1px solid #00ff00' : '1px solid rgba(0,255,0,0.4)', 
+        borderRadius: 8, padding: '6px 12px', display: 'flex', flexDirection: 'column', 
+        alignItems: 'flex-end', backdropFilter: 'blur(4px)',
+        transition: 'all 0.15s ease-out',
+        boxShadow: pulse ? '0 0 15px rgba(0, 255, 0, 0.5)' : 'none'
+      }}>
+        <div style={{ color: '#00ff00', fontSize: 9, fontWeight: 800, letterSpacing: 1 }}>
+          VISÃO COMPUTACIONAL
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>{type.toUpperCase()}:</span>
-          <span style={{ color: '#00ff00', fontSize: 18, fontFamily: 'monospace', fontWeight: 900 }}>{String(dbCount).padStart(4, '0')}</span>
+          <span style={{ 
+            color: '#00ff00', fontSize: pulse ? 22 : 18, fontFamily: 'monospace', 
+            fontWeight: 900, transition: 'font-size 0.15s'
+          }}>
+            {String(dbCount).padStart(4, '0')}
+          </span>
         </div>
       </div>
     </div>
