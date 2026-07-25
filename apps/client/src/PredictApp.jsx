@@ -703,21 +703,12 @@ function LiveMarketCard({ m, onTrade, balance }) {
     <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 24 }}>
       {/* Video Area */}
       <div style={{ position: 'relative', width: '100%', background: '#111', aspectRatio: '16/9', overflow: 'hidden' }}>
-        {m.video_type === 'youtube' ? (
-          <iframe 
-            src={`https://www.youtube.com/embed/${getYoutubeId(m.video_url)}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1`}
-            style={{ width: '100%', height: '100%', border: 'none', position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
-            allow="autoplay; encrypted-media"
-            title="Live Stream"
-          />
-        ) : (
-          <img 
-            src={`http://192.168.2.112:5000/video_feed/${m.id}`} 
-            alt="Foresight AI Stream"
-            style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0 }}
-            onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-          />
-        )}
+        <img 
+          src={`http://192.168.2.112:5000/video_feed/${m.id}`} 
+          alt="Foresight AI Stream"
+          style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0 }}
+          onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+        />
         <div style={{ display: 'none', position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: 13, fontWeight: 600, textAlign: 'center', padding: 20 }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
             <Tv size={32} opacity={0.5} />
@@ -725,7 +716,6 @@ function LiveMarketCard({ m, onTrade, balance }) {
           </div>
         </div>
         
-        <AICounterOverlay type={m.ai_counter_type} dbCount={m.ai_current_count} aiLineConfig={m.ai_line_config} />
         {/* Live Badge over video */}
         <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(255, 60, 60, 0.9)', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 4, backdropFilter: 'blur(4px)' }}>
           <span style={{ width: 6, height: 6, background: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
@@ -882,18 +872,20 @@ function MarketDetail({ m, onBack, initialSide, onTrade, balance }) {
 
       {m.video_type ? (
         <div style={{ position: 'relative', width: '100%', borderRadius: 12, overflow: 'hidden', marginBottom: 18, border: '1px solid var(--border-soft)', background: '#000', aspectRatio: '16/9' }}>
-          {m.video_type === 'youtube' && (
-            <iframe 
-              width="100%" height="100%" 
-              src={`https://www.youtube.com/embed/${getYoutubeId(m.video_url)}?autoplay=1&mute=1&controls=0`} 
-              frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen
-              style={{ position: 'absolute', top: 0, left: 0 }}
-            />
-          )}
-          {(m.video_type === 'ipcam' || m.video_type === 'upload') && (
-            <video src={m.video_url} autoPlay muted loop playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          )}
-          <AICounterOverlay type={m.ai_counter_type} dbCount={m.ai_current_count} aiLineConfig={m.ai_line_config} />
+          <img 
+            src={`http://192.168.2.112:5000/video_feed/${m.id}`} 
+            alt="Foresight AI Stream"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0 }}
+            onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+          />
+          <div style={{ display: 'none', position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: 13, fontWeight: 600, textAlign: 'center', padding: 20 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              <Tv size={32} opacity={0.5} />
+              Sem sinal de vídeo.<br/>Aguardando a conexão da Inteligência Artificial.
+            </div>
+          </div>
+          
+          {/* O SVG da linha foi removido pois a propria IA ja desenha a linha e os trackers nativamente no video. */}
         </div>
       ) : (
         <div className="chart-card">
