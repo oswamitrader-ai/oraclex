@@ -669,12 +669,47 @@ function CountdownTimer({ endDate }) {
   );
 }
 
-function LiveMarketCard({ m, onTrade, balance }) {
+function LiveMarketCard({ m, onTrade, balance, positions, onCashout }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  const activePositions = positions?.filter(p => p.marketId === m.id && p.status === 'active') || [];
+  const yesPositions = activePositions.filter(p => p.side === 'yes');
+  const noPositions = activePositions.filter(p => p.side === 'no');
+
+  const renderPositionFeedback = (sidePositions, sideLabel, currentPrice) => {
+    if (sidePositions.length === 0) return null;
+    const amount = sidePositions.reduce((acc, p) => acc + p.amount, 0);
+    const shares = sidePositions.reduce((acc, p) => acc + p.shares, 0);
+    const currentValue = shares * (currentPrice / 100);
+    const pnl = currentValue - amount;
+    const pnlPct = (pnl / amount) * 100;
+    const isProfit = pnl >= 0;
+    
+    return (
+      <div style={{ marginBottom: 16, padding: 12, background: 'var(--surface)', borderRadius: 12, border: `1px solid var(--${sideLabel.toLowerCase()})` }}>
+         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: `var(--${sideLabel.toLowerCase()})` }}>Aposta em {sideLabel.toUpperCase()}</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: isProfit ? 'var(--yes)' : 'var(--no)' }}>
+               {isProfit ? '+' : ''}{pnlPct.toFixed(1)}%
+            </span>
+         </div>
+         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-dim)', marginBottom: 12 }}>
+            <span>Investido: R$ {amount.toFixed(2)}</span>
+            <span>Atual: R$ {currentValue.toFixed(2)}</span>
+         </div>
+         <button 
+           onClick={() => onCashout(sidePositions.map(p => p.id), currentValue, m.id, sideLabel.toLowerCase())}
+           style={{ width: '100%', padding: '8px', background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+         >
+            Encerrar Aposta (Cashout)
+         </button>
+      </div>
+    );
+  };
 
   const isScheduled = m.start_date && now < new Date(m.start_date);
   const isExpired = m.end_date && now > new Date(m.end_date);
@@ -736,7 +771,10 @@ function LiveMarketCard({ m, onTrade, balance }) {
         </div>
 
         {canTrade ? (
-          <div className={`trade-panel ${side}`} style={{ margin: 0, padding: 16, borderRadius: 12, background: 'var(--surface2)' }}>
+          <>
+            {renderPositionFeedback(yesPositions, 'yes', m.yes)}
+            {renderPositionFeedback(noPositions, 'no', 100 - m.yes)}
+            <div className={`trade-panel ${side}`} style={{ margin: 0, padding: 16, borderRadius: 12, background: 'var(--surface2)' }}>
             
             {confirmed && (
               <div style={{ position: 'absolute', inset: 0, background: 'var(--surface)', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text)', animation: 'slideup 0.2s ease-out' }}>
@@ -762,6 +800,7 @@ function LiveMarketCard({ m, onTrade, balance }) {
               {confirmed ? <Check size={20} /> : (numAmount > balance ? "Saldo Insuficiente" : `Comprar ${side === "yes" ? "SIM" : "NÃO"}`)}
             </button>
           </div>
+          </>
         ) : (
           <div style={{ width: '100%', textAlign: 'center', background: 'var(--surface2)', color: 'var(--text-dim)', padding: '12px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
             {isClosed ? `VENCEU ${m.winner_side.toUpperCase()}` : isScheduled ? 'COMEÇA EM BREVE' : 'AGUARDANDO RESULTADO'}
@@ -772,7 +811,7 @@ function LiveMarketCard({ m, onTrade, balance }) {
   );
 }
 
-function LiveScreen({ markets, onTrade, balance }) {
+function LiveScreen({ markets, onTrade, balance, positions, onCashout }) {
   const visible = markets.filter(m => m.video_type && m.status === 'active');
 
   return (
@@ -789,7 +828,7 @@ function LiveScreen({ markets, onTrade, balance }) {
       ) : (
         <div style={{ maxWidth: 600, margin: '0 auto' }}>
           {visible.map((m) => (
-            <LiveMarketCard key={m.id} m={m} onTrade={onTrade} balance={balance} />
+            <LiveMarketCard key={m.id} m={m} onTrade={onTrade} balance={balance} positions={positions} onCashout={onCashout} />
           ))}
         </div>
       )}
@@ -1837,7 +1876,7 @@ export default function PredictApp() {
 
       {tab === "home" && <HomeScreen markets={markets} onOpen={openMarket} query={query} setQuery={setQuery} />}
       
-      {tab === "live" && <LiveScreen markets={markets} onTrade={handleTrade} balance={balance} />}
+      {tab === "live" && <LiveScreen markets={markets} onTrade={handleTrade} balance={balance} positions={positions} onCashout={handleCashout} />}
       
       {tab === "detail" && currentMarket && (
         <MarketDetail
