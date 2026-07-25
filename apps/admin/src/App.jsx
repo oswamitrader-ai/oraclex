@@ -540,10 +540,11 @@ function MarketsPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-semibold text-text-dim mb-1">Tipo de Vídeo</label>
-                        <select value={formData.video_type} onChange={e => setFormData({...formData, video_type: e.target.value})} className="w-full bg-surface border border-border rounded-lg px-4 py-2 text-white outline-none focus:border-yes appearance-none">
-                          <option value="youtube">Live YouTube</option>
+                        <select value={formData.video_type} onChange={e => setFormData({...formData, video_type: e.target.value, video_url: ''})} className="w-full bg-surface border border-border rounded-lg px-4 py-2 text-white outline-none focus:border-yes appearance-none">
+                          <option value="youtube">YouTube (Live ou Gravado)</option>
                           <option value="ipcam">Câmera IP (M3U8 / HLS)</option>
-                          <option value="upload">Vídeo Estático (.mp4)</option>
+                          <option value="static_link">Link de Vídeo Direto (.mp4)</option>
+                          <option value="upload">Upload de Arquivo de Vídeo</option>
                         </select>
                       </div>
                       <div>
@@ -559,8 +560,28 @@ function MarketsPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-semibold text-text-dim mb-1">URL do Vídeo (Link)</label>
-                        <input type="text" value={formData.video_url} onChange={e => setFormData({...formData, video_url: e.target.value})} placeholder="https://youtube.com/watch?v=..." className="w-full bg-surface border border-border rounded-lg px-4 py-2 text-white outline-none focus:border-yes" />
+                        <label className="block text-sm font-semibold text-text-dim mb-1">URL do Vídeo / Arquivo</label>
+                        {formData.video_type === 'upload' ? (
+                          <input type="file" accept="video/mp4,video/*" onChange={async (e) => {
+                            const file = e.target.files[0];
+                            if(!file) return;
+                            try {
+                              const fName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+                              const { data, error } = await supabase.storage.from('videos').upload(fName, file);
+                              if(error) {
+                                alert("Erro ao fazer upload (Crie o bucket 'videos' no Supabase!): " + error.message);
+                              } else {
+                                const { data: pData } = supabase.storage.from('videos').getPublicUrl(fName);
+                                setFormData({...formData, video_url: pData.publicUrl});
+                                alert("Upload concluído!");
+                              }
+                            } catch(err) {
+                              alert("Erro no upload");
+                            }
+                          }} className="w-full bg-surface border border-border rounded-lg px-4 py-1.5 text-white outline-none focus:border-yes" />
+                        ) : (
+                          <input type="text" value={formData.video_url} onChange={e => setFormData({...formData, video_url: e.target.value})} placeholder={formData.video_type === 'youtube' ? "https://youtube.com/watch?v=..." : "https://site.com/video.mp4"} className="w-full bg-surface border border-border rounded-lg px-4 py-2 text-white outline-none focus:border-yes" />
+                        )}
                       </div>
                       <div>
                         <label className="block text-sm font-semibold text-text-dim mb-1">Alvo para Vitória (Linha de Chegada)</label>
@@ -580,6 +601,12 @@ function MarketsPage() {
                              frameBorder="0"
                              allow="autoplay; encrypted-media"
                            ></iframe>
+                         ) : (formData.video_type === 'static_link' || formData.video_type === 'upload') && formData.video_url ? (
+                           <video 
+                             src={formData.video_url} 
+                             autoPlay loop muted playsInline
+                             className="w-full h-full object-cover opacity-50 pointer-events-none"
+                           />
                          ) : (
                            <div className="flex items-center justify-center w-full h-full text-text-dim text-sm">Preview do Vídeo</div>
                          )}
