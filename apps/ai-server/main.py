@@ -101,14 +101,33 @@ class VideoStream:
 def get_stream_url(video_url, video_type):
     """Extrai o link raw do vídeo se for YouTube, ou retorna direto se for IP Cam"""
     if video_type == 'youtube':
+        # yt-dlp com extração de cookies do navegador do usuário
+        # Isso burla o "Sign in to confirm you're not a bot"
+        browsers_to_try = ['chrome', 'edge', 'brave', 'firefox', 'opera']
+        
+        for browser in browsers_to_try:
+            try:
+                ydl_opts = {
+                    'format': 'best', 
+                    'quiet': True,
+                    'cookiesfrombrowser': (browser, ),
+                    'extractor_args': {'youtube': {'player_client': ['web']}}
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info_dict = ydl.extract_info(video_url, download=False)
+                    return info_dict.get('url')
+            except Exception as e:
+                # Se falhar porque não achou o cookie deste navegador ou outro erro, tenta o próximo
+                continue
+                
+        # Fallback sem cookies se nenhum navegador der certo
         try:
-            # yt-dlp é muito melhor em burlar o bloqueio de "Login Required" do Youtube
             ydl_opts = {'format': 'best', 'quiet': True}
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info_dict = ydl.extract_info(video_url, download=False)
                 return info_dict.get('url')
         except Exception as e:
-            print(f"Erro yt-dlp: {e}")
+            print(f"Erro yt-dlp sem cookies: {e}")
             
         # Fallback para o streamlink antigo
         try:
