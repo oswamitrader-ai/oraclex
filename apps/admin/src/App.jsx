@@ -302,10 +302,11 @@ function MarketsPage() {
       start_date: m.start_date ? formatDateTimeLocal(m.start_date) : '',
       end_date: m.end_date ? formatDateTimeLocal(m.end_date) : '',
       start_chance: m.start_chance,
+      video_type: m.video_type || null,
       video_url: m.video_url || '',
       ai_counter_type: m.ai_counter_type || 'carros',
       ai_target_count: m.ai_target_count || 0,
-      ai_line_y: m.ai_line_y !== undefined ? m.ai_line_y : 0.6
+      ai_line_y: m.ai_line_y !== undefined && m.ai_line_y !== null ? m.ai_line_y : 0.6
     });
     setModalOpen(true);
   }
@@ -491,11 +492,30 @@ function MarketsPage() {
       )}
 
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface border border-border w-full max-w-lg rounded-2xl p-6">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
+          <style>{`
+            @keyframes slideUpSheet {
+              from { transform: translateY(100%); opacity: 0; }
+              to { transform: translateY(0); opacity: 1; }
+            }
+            @keyframes fadeIn {
+              from { opacity: 0; }
+              to { opacity: 1; }
+            }
+          `}</style>
+          
+          {/* Backdrop Escuro */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" style={{animation: 'fadeIn 0.3s ease-out forwards'}} onClick={() => setModalOpen(false)}></div>
+          
+          {/* Bottom Sheet */}
+          <div className="relative bg-surface border-t border-x sm:border-y border-border w-full max-w-2xl rounded-t-[32px] sm:rounded-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto shadow-2xl pb-10 sm:pb-8" style={{animation: 'slideUpSheet 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards'}}>
+            
+            {/* Grab handle (indicador de arraste) */}
+            <div className="w-16 h-1.5 bg-border rounded-full mx-auto mb-6 sm:hidden"></div>
+
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold">{formData.id ? 'Editar Mercado' : 'Novo Mercado'}</h2>
-              <button onClick={() => setModalOpen(false)} className="text-text-dim hover:text-white"><X size={20}/></button>
+              <h2 className="text-2xl font-black text-white">{formData.id ? 'Editar Mercado' : 'Novo Mercado'}</h2>
+              <button onClick={() => setModalOpen(false)} className="text-text-dim hover:text-white bg-surface2 p-2 rounded-full transition-transform hover:scale-105 active:scale-95"><X size={20}/></button>
             </div>
             
             <div className="space-y-4">
