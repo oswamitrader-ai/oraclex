@@ -664,7 +664,7 @@ function LiveMarketCard({ m, onTrade, balance }) {
       {/* Video Area */}
       <div style={{ position: 'relative', width: '100%', background: '#111', aspectRatio: '16/9', overflow: 'hidden' }}>
         <img 
-          src={`http://localhost:5000/video_feed/${m.id}`} 
+          src={`http://192.168.2.112:5000/video_feed/${m.id}`} 
           alt="Foresight AI Stream"
           style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0 }}
           onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
