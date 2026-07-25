@@ -1,6 +1,7 @@
 import os
 import time
 import cv2
+import yt_dlp
 import streamlink
 import traceback
 import datetime
@@ -100,6 +101,16 @@ class VideoStream:
 def get_stream_url(video_url, video_type):
     """Extrai o link raw do vídeo se for YouTube, ou retorna direto se for IP Cam"""
     if video_type == 'youtube':
+        try:
+            # yt-dlp é muito melhor em burlar o bloqueio de "Login Required" do Youtube
+            ydl_opts = {'format': 'best', 'quiet': True}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(video_url, download=False)
+                return info_dict.get('url')
+        except Exception as e:
+            print(f"Erro yt-dlp: {e}")
+            
+        # Fallback para o streamlink antigo
         try:
             streams = streamlink.streams(video_url)
             if 'best' in streams:
