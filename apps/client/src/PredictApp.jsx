@@ -448,7 +448,7 @@ function ProbBar({ yes }) {
 /*  AI COUNTER OVERLAY (SIMULATOR & HUD)                               */
 /* ------------------------------------------------------------------ */
 
-function AICounterOverlay({ type, dbCount = 0 }) {
+function AICounterOverlay({ type, dbCount = 0, aiLineY = 0.6 }) {
   const [pulse, setPulse] = useState(false);
   const prevCount = useRef(dbCount);
 
@@ -485,6 +485,19 @@ function AICounterOverlay({ type, dbCount = 0 }) {
           </span>
         </div>
       </div>
+      
+      {/* Linha de Contagem */}
+      <div 
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          height: 2,
+          background: 'var(--no)',
+          top: `${aiLineY * 100}%`,
+          boxShadow: '0 0 10px rgba(255, 0, 0, 0.8)'
+        }}
+      ></div>
     </div>
   );
 }
@@ -879,7 +892,7 @@ function MarketDetail({ m, onBack, initialSide, onTrade, balance }) {
           {(m.video_type === 'ipcam' || m.video_type === 'upload') && (
             <video src={m.video_url} autoPlay muted loop playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           )}
-          <AICounterOverlay type={m.ai_counter_type} dbCount={m.ai_current_count} />
+          <AICounterOverlay type={m.ai_counter_type} dbCount={m.ai_current_count} aiLineY={m.ai_line_y} />
         </div>
       ) : (
         <div className="chart-card">
