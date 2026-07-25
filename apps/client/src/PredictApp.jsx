@@ -21,7 +21,7 @@ function getYoutubeId(url) {
   return id || '';
 }
 import {
-  AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid,
+  AreaChart, Area, LineChart, Line, Legend, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
 import { supabase } from "./supabase";
 
@@ -39,14 +39,35 @@ function seededRandom(seed) {
   };
 }
 
-function makeHistory(seed, start, points = 48) {
+function makeBinaryHistory(seed, start, points = 48) {
   const rnd = seededRandom(seed);
   let p = start;
   const arr = [];
   for (let i = 0; i < points; i++) {
     p += (rnd() - 0.5) * 4;
     p = Math.max(2, Math.min(98, p));
-    arr.push({ t: i, p: Math.round(p * 10) / 10 });
+    arr.push({ t: i, yes: Math.round(p * 10) / 10, no: Math.round((100 - p) * 10) / 10 });
+  }
+  return arr;
+}
+
+function makeMultipleHistory(seed, options, points = 48) {
+  const rnd = seededRandom(seed);
+  const arr = [];
+  let prices = options.map(o => ({ id: o.id, p: o.price }));
+  for (let i = 0; i < points; i++) {
+    let point = { t: i };
+    let idx = Math.floor(rnd() * prices.length);
+    let delta = (rnd() - 0.5) * 6;
+    prices = prices.map((pr, j) => {
+      if (j === idx) return { id: pr.id, p: Math.max(1, pr.p + delta) };
+      return { id: pr.id, p: Math.max(1, pr.p - (delta / (prices.length - 1 || 1))) };
+    });
+    let sum = prices.reduce((a, b) => a + b.p, 0);
+    prices = prices.map(pr => ({ id: pr.id, p: (pr.p / sum) * 100 }));
+    
+    prices.forEach(pr => point[pr.id] = Math.round(pr.p * 10) / 10);
+    arr.push(point);
   }
   return arr;
 }
@@ -69,7 +90,7 @@ const RAW_MARKETS = [
 const INITIAL_MARKETS = RAW_MARKETS.map((m, i) => ({
   ...m,
   yes: m.start,
-  history: makeHistory(i + 1, m.start),
+  history: makeBinaryHistory(i + 1, m.start),
 }));
 
 const SHARED_STYLES = `
@@ -418,20 +439,35 @@ function fmtPct(n) {
   return `${Math.round(n)}%`;
 }
 
-function Sparkline({ data, positive }) {
-  const stroke = positive ? "var(--yes)" : "var(--no)";
+const COLORS = ["#00d992", "#1652f0", "#ffb400", "#ff5170", "#9b51e0", "#00bcd4", "#ffeb3b"];
+
+function MultiLineChart({ data, options, isMultiple, height = 40, hideX = true }) {
+  if (!data || data.length === 0) return null;
+
   return (
-    <ResponsiveContainer width="100%" height={40}>
-      <AreaChart data={data} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
-        <defs>
-          <linearGradient id={`spark-${positive ? "y" : "n"}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={stroke} stopOpacity={0.35} />
-            <stop offset="100%" stopColor={stroke} stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <Area type="monotone" dataKey="p" stroke={stroke} strokeWidth={1.75}
-          fill={`url(#spark-${positive ? "y" : "n"})`} isAnimationActive={false} />
-      </AreaChart>
+    <ResponsiveContainer width="100%" height={height}>
+      <LineChart data={data} margin={{ top: 2, right: 0, bottom: hideX ? 0 : 0, left: hideX ? 0 : -20 }}>
+        {!hideX && <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />}
+        {!hideX && <XAxis dataKey="t" hide />}
+        <YAxis domain={[0, 100]} hide />
+        {!hideX && (
+          <Tooltip
+            contentStyle={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+            labelFormatter={() => ""}
+            formatter={(value, name) => [`${value}%`, name]}
+          />
+        )}
+        {isMultiple ? (
+          options?.map((opt, i) => (
+            <Line key={opt.id} type="monotone" dataKey={opt.id} name={opt.title} stroke={COLORS[i % COLORS.length]} strokeWidth={hideX ? 1.5 : 2} dot={false} isAnimationActive={false} />
+          ))
+        ) : (
+          <>
+            <Line type="monotone" dataKey="yes" name="Sim" stroke="var(--yes)" strokeWidth={hideX ? 1.5 : 2} dot={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="no" name="Não" stroke="var(--no)" strokeWidth={hideX ? 1.5 : 2} dot={false} isAnimationActive={false} />
+          </>
+        )}
+      </LineChart>
     </ResponsiveContainer>
   );
 }
@@ -538,28 +574,46 @@ function MarketCard({ m, onOpen }) {
         )}
       </div>
 
-      <div className="card-mid">
-        <Sparkline data={m.history} positive={positive} />
-        <div className="card-pct-block">
-          <div className="card-pct" style={{ color: positive ? "var(--yes)" : "var(--no)" }}>
-            {fmtPct(m.yes)}
+      <div className="card-mid" style={m.market_type === 'multiple' ? { display: 'block', marginBottom: 12 } : {}}>
+        <MultiLineChart data={m.history} options={m.options} isMultiple={m.market_type === 'multiple'} height={48} hideX={true} />
+        {m.market_type === 'multiple' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+            {(m.options || []).slice().sort((a,b)=>b.price-a.price).slice(0, 3).map(opt => (
+              <div key={opt.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, background: 'var(--surface2)', padding: '6px 12px', borderRadius: 6, borderLeft: `3px solid ${COLORS[(m.options || []).findIndex(o => o.id === opt.id) % COLORS.length]}` }}>
+                <span style={{ fontWeight: 600, color: 'var(--text)' }}>{opt.title}</span>
+                <span style={{ fontWeight: 700 }}>{opt.price}%</span>
+              </div>
+            ))}
+            {(m.options || []).length > 3 && <div style={{ fontSize: 11, color: 'var(--text-dim)', textAlign: 'center' }}>+ {(m.options || []).length - 3} opções</div>}
           </div>
-          <div className="card-pct-label">chance</div>
-        </div>
+        ) : (
+          <div className="card-pct-block" style={{ marginTop: 8 }}>
+            <div className="card-pct" style={{ color: positive ? "var(--yes)" : "var(--no)" }}>
+              {fmtPct(m.yes)}
+            </div>
+            <div className="card-pct-label">chance de Sim</div>
+          </div>
+        )}
       </div>
 
-      <ProbBar yes={m.yes} />
+      {m.market_type !== 'multiple' && <ProbBar yes={m.yes} />}
 
       <div className="card-actions">
         {canTrade ? (
-          <>
-            <button className="btn-yes" onClick={(e) => { e.stopPropagation(); onOpen(m, "yes"); }}>
-              Sim · {fmtPct(m.yes)}
+          m.market_type === 'multiple' ? (
+            <button className="btn-yes" style={{ width: '100%' }} onClick={(e) => { e.stopPropagation(); onOpen(m, (m.options && m.options[0]) ? m.options[0].id : null); }}>
+              Apostar
             </button>
-            <button className="btn-no" onClick={(e) => { e.stopPropagation(); onOpen(m, "no"); }}>
-              Não · {fmtPct(100 - m.yes)}
-            </button>
-          </>
+          ) : (
+            <>
+              <button className="btn-yes" onClick={(e) => { e.stopPropagation(); onOpen(m, "yes"); }}>
+                Sim · {fmtPct(m.yes)}
+              </button>
+              <button className="btn-no" onClick={(e) => { e.stopPropagation(); onOpen(m, "no"); }}>
+                Não · {fmtPct(100 - m.yes)}
+              </button>
+            </>
+          )
         ) : isScheduled ? (
            <div style={{ width: '100%', textAlign: 'center', background: 'var(--surface2)', color: 'var(--text-dim)', padding: '8px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
              COMEÇA EM {startDateFmt}
@@ -591,10 +645,23 @@ function MarketCard({ m, onOpen }) {
 /* ------------------------------------------------------------------ */
 
 function HomeScreen({ markets, onOpen, query, setQuery }) {
+  const [selectedCat, setSelectedCat] = useState("Tudo");
+  
+  const availableCats = useMemo(() => {
+    const cats = new Set();
+    markets.forEach(m => {
+      if (m.status === 'active' && !m.video_type && m.category) {
+        cats.add(m.category);
+      }
+    });
+    return ["Tudo", ...Array.from(cats).sort()];
+  }, [markets]);
+
   const visible = markets.filter((m) => {
     if (m.status !== 'active') return false;
     if (m.video_type) return false; // Hide video markets from home
     if (query && !m.title.toLowerCase().includes(query.toLowerCase())) return false;
+    if (selectedCat !== "Tudo" && m.category !== selectedCat) return false;
     return true;
   });
 
@@ -608,6 +675,42 @@ function HomeScreen({ markets, onOpen, query, setQuery }) {
           value={query} 
           onChange={(e) => setQuery(e.target.value)} 
         />
+      </div>
+
+      {/* Category Navigation (Horizontal Scroll) */}
+      <div 
+        style={{ 
+          display: 'flex', 
+          overflowX: 'auto', 
+          gap: 8, 
+          padding: '0 16px 16px', 
+          margin: '0 -16px', 
+          WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'none', /* Firefox */
+          msOverflowStyle: 'none'  /* IE 10+ */
+        }} 
+      >
+        <style dangerouslySetInnerHTML={{__html: `div::-webkit-scrollbar { display: none; }`}} />
+        {availableCats.map(cat => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCat(cat)}
+            style={{
+              padding: '6px 16px',
+              borderRadius: 20,
+              background: selectedCat === cat ? 'var(--text)' : 'var(--surface)',
+              color: selectedCat === cat ? 'var(--bg)' : 'var(--text-dim)',
+              border: `1px solid ${selectedCat === cat ? 'var(--text)' : 'var(--border)'}`,
+              fontWeight: 700,
+              fontSize: 13,
+              whiteSpace: 'nowrap',
+              transition: 'all 0.2s',
+              cursor: 'pointer'
+            }}
+          >
+            {cat}
+          </button>
+        ))}
       </div>
       {visible.length === 0 ? (
         <div className="empty">Nenhum mercado encontrado.</div>
@@ -679,6 +782,7 @@ function LiveMarketCard({ m, onTrade, balance, positions, onCashout }) {
   const activePositions = positions?.filter(p => p.marketId === m.id && p.status === 'active') || [];
   const yesPositions = activePositions.filter(p => p.side === 'yes');
   const noPositions = activePositions.filter(p => p.side === 'no');
+  const isMultiple = m.market_type === 'multiple';
 
   const renderPositionFeedback = (sidePositions, sideLabel, currentPrice) => {
     if (sidePositions.length === 0) return null;
@@ -690,9 +794,9 @@ function LiveMarketCard({ m, onTrade, balance, positions, onCashout }) {
     const isProfit = pnl >= 0;
     
     return (
-      <div style={{ marginBottom: 16, padding: 12, background: 'var(--surface)', borderRadius: 12, border: `1px solid var(--${sideLabel.toLowerCase()})` }}>
+      <div style={{ marginBottom: 16, padding: 12, background: 'var(--surface)', borderRadius: 12, border: `1px solid var(--border)` }}>
          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: `var(--${sideLabel.toLowerCase()})` }}>Aposta em {sideLabel.toUpperCase()}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: `var(--text)` }}>Aposta em {sideLabel.toUpperCase()}</span>
             <span style={{ fontSize: 14, fontWeight: 800, color: isProfit ? 'var(--yes)' : 'var(--no)' }}>
                {isProfit ? '+' : ''}{pnlPct.toFixed(1)}%
             </span>
@@ -716,11 +820,21 @@ function LiveMarketCard({ m, onTrade, balance, positions, onCashout }) {
   const isClosed = m.status === 'closed';
   const canTrade = !isScheduled && !isExpired && !isClosed;
   
-  const [side, setSide] = useState("yes");
+  const defaultSide = isMultiple && m.options && m.options.length ? m.options[0].id : 'yes';
+  const [side, setSide] = useState(defaultSide);
   const [amount, setAmount] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   
-  const price = side === "yes" ? m.yes : 100 - m.yes;
+  let price = 50;
+  let sideTitle = "";
+  if (isMultiple) {
+    const opt = m.options?.find(o => o.id === side);
+    if (opt) { price = opt.price; sideTitle = opt.title; }
+  } else {
+    price = side === "yes" ? m.yes : 100 - m.yes;
+    sideTitle = side === "yes" ? "SIM" : "NÃO";
+  }
+  
   const numAmount = parseFloat(amount) || 0;
   const shares = price > 0 ? (numAmount / (price / 100)) : 0;
   
@@ -764,31 +878,57 @@ function LiveMarketCard({ m, onTrade, balance, positions, onCashout }) {
         <h2 style={{ fontSize: 16, margin: '0 0 12px 0', lineHeight: 1.3 }}>{m.title}</h2>
         
         {/* Probabilities Bar */}
-        <ProbBar yes={m.yes} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginTop: 4, marginBottom: 16 }}>
-          <span style={{ color: 'var(--yes)' }}>SIM: {m.yes}%</span>
-          <span style={{ color: 'var(--no)' }}>NÃO: {100 - m.yes}%</span>
-        </div>
+        {!isMultiple ? (
+          <>
+            <ProbBar yes={m.yes} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginTop: 4, marginBottom: 16 }}>
+              <span style={{ color: 'var(--yes)' }}>SIM: {m.yes}%</span>
+              <span style={{ color: 'var(--no)' }}>NÃO: {100 - m.yes}%</span>
+            </div>
+          </>
+        ) : (
+          <div style={{ marginBottom: 16, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {m.options?.map(opt => (
+              <div key={opt.id} style={{ fontSize: 12, background: 'var(--surface2)', padding: '4px 8px', borderRadius: 4, fontWeight: 600 }}>
+                {opt.title}: <span style={{ color: 'var(--yes)' }}>{opt.price}%</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {canTrade ? (
           <>
-            {renderPositionFeedback(yesPositions, 'yes', m.yes)}
-            {renderPositionFeedback(noPositions, 'no', 100 - m.yes)}
+            {isMultiple ? (
+              m.options?.map(opt => renderPositionFeedback(activePositions.filter(p => p.side === opt.id), opt.title, opt.price))
+            ) : (
+              <>
+                {renderPositionFeedback(yesPositions, 'SIM', m.yes)}
+                {renderPositionFeedback(noPositions, 'NÃO', 100 - m.yes)}
+              </>
+            )}
             <div className={`trade-panel ${side}`} style={{ margin: 0, padding: 16, borderRadius: 12, background: 'var(--surface2)' }}>
             
             {confirmed && (
               <div style={{ position: 'absolute', inset: 0, background: 'var(--surface)', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text)', animation: 'slideup 0.2s ease-out' }}>
-                <div style={{ width: 48, height: 48, borderRadius: '50%', background: side === 'yes' ? 'var(--yes-dim)' : 'var(--no-dim)', color: side === 'yes' ? 'var(--yes)' : 'var(--no)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--yes-dim)', color: 'var(--yes)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
                   <Check size={28} />
                 </div>
                 <strong style={{ fontSize: 18, marginBottom: 4 }}>Ordem Confirmada!</strong>
-                <span style={{ fontSize: 13, color: 'var(--text-faint)', fontWeight: 600 }}>Cotas de <b>{side === 'yes' ? 'SIM' : 'NÃO'}</b> adquiridas</span>
+                <span style={{ fontSize: 13, color: 'var(--text-faint)', fontWeight: 600 }}>Cotas de <b>{sideTitle}</b> adquiridas</span>
               </div>
             )}
 
-            <div className="trade-tabs">
-              <button className={`trade-tab ${side === "yes" ? "active" : ""}`} onClick={() => setSide("yes")}>SIM</button>
-              <button className={`trade-tab ${side === "no" ? "active" : ""}`} onClick={() => setSide("no")}>NÃO</button>
+            <div className="trade-tabs" style={isMultiple ? { overflowX: 'auto', flexWrap: 'nowrap', justifyContent: 'flex-start', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' } : {}}>
+              {isMultiple ? (
+                m.options?.map(opt => (
+                  <button key={opt.id} className={`trade-tab ${side === opt.id ? "active" : ""}`} style={{ flex: '0 0 auto', padding: '10px 16px' }} onClick={() => setSide(opt.id)}>{opt.title}</button>
+                ))
+              ) : (
+                <>
+                  <button className={`trade-tab ${side === "yes" ? "active" : ""}`} onClick={() => setSide("yes")}>SIM</button>
+                  <button className={`trade-tab ${side === "no" ? "active" : ""}`} onClick={() => setSide("no")}>NÃO</button>
+                </>
+              )}
             </div>
             
             <div className="amount-input-row">
@@ -796,8 +936,8 @@ function LiveMarketCard({ m, onTrade, balance, positions, onCashout }) {
               <input type="number" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
             </div>
 
-            <button className={`trade-submit ${side}`} onClick={handleTrade} disabled={numAmount <= 0 || numAmount > balance || confirmed} style={{ marginTop: 12 }}>
-              {confirmed ? <Check size={20} /> : (numAmount > balance ? "Saldo Insuficiente" : `Comprar ${side === "yes" ? "SIM" : "NÃO"}`)}
+            <button className={`trade-submit ${side === 'no' && !isMultiple ? 'no' : 'yes'}`} onClick={handleTrade} disabled={numAmount <= 0 || numAmount > balance || confirmed} style={{ marginTop: 12 }}>
+              {confirmed ? <Check size={20} /> : (numAmount > balance ? "Saldo Insuficiente" : `Comprar ${sideTitle}`)}
             </button>
           </div>
           </>
@@ -843,12 +983,19 @@ function LiveScreen({ markets, onTrade, balance, positions, onCashout }) {
 const TIMEFRAMES = ["1H", "6H", "1D", "1S", "1M", "TUDO"];
 
 function MarketDetail({ m, onBack, initialSide, onTrade, balance }) {
-  const [side, setSide] = useState(initialSide === "no" ? "no" : "yes");
+  const isMultiple = m.market_type === 'multiple';
+  const defaultSide = isMultiple && m.options && m.options.length ? m.options[0].id : 'yes';
+  
+  const [side, setSide] = useState(initialSide && (!isMultiple || m.options?.find(o => o.id === initialSide)) ? initialSide : defaultSide);
   const [tf, setTf] = useState("1D");
   const [amount, setAmount] = useState("");
   const [confirmed, setConfirmed] = useState(false);
 
-  useEffect(() => { setSide(initialSide === "no" ? "no" : "yes"); }, [initialSide, m.id]);
+  useEffect(() => { 
+    if (initialSide && (!isMultiple || m.options?.find(o => o.id === initialSide))) {
+      setSide(initialSide);
+    }
+  }, [initialSide, m.id, isMultiple]);
 
   const isScheduled = m.start_date && new Date() < new Date(m.start_date);
   const isExpired = m.end_date && new Date() > new Date(m.end_date);
@@ -857,7 +1004,16 @@ function MarketDetail({ m, onBack, initialSide, onTrade, balance }) {
   const endDateFmt = m.end_date ? new Date(m.end_date).toLocaleString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
   const startDateFmt = m.start_date ? new Date(m.start_date).toLocaleString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
 
-  const price = side === "yes" ? m.yes : 100 - m.yes;
+  let price = 50;
+  let sideTitle = "";
+  if (isMultiple) {
+    const opt = m.options?.find(o => o.id === side);
+    if (opt) { price = opt.price; sideTitle = opt.title; }
+  } else {
+    price = side === "yes" ? m.yes : 100 - m.yes;
+    sideTitle = side === "yes" ? "Sim" : "Não";
+  }
+
   const numAmount = parseFloat(amount) || 0;
   const shares = price > 0 ? (numAmount / (price / 100)) : 0;
   const payout = shares;
@@ -870,8 +1026,10 @@ function MarketDetail({ m, onBack, initialSide, onTrade, balance }) {
     if (numAmount <= 0) return;
     onTrade({ marketId: m.id, side, amount: numAmount, price, shares, title: m.title });
     setConfirmed(true);
-    setTimeout(() => setConfirmed(false), 1800);
-    setAmount("");
+    setTimeout(() => {
+      setConfirmed(false);
+      setAmount("");
+    }, 1800);
   };
 
   return (
@@ -905,8 +1063,8 @@ function MarketDetail({ m, onBack, initialSide, onTrade, balance }) {
       </div>
 
       <div className="detail-price-row">
-        <div className="big-pct" style={{ color: "var(--yes)" }}>{fmtPct(m.yes)}</div>
-        <div className="big-pct-label">de chance em <b>Sim</b></div>
+        <div className="big-pct" style={{ color: "var(--yes)" }}>{fmtPct(price)}</div>
+        <div className="big-pct-label">de chance em <b>{sideTitle}</b></div>
       </div>
 
       {m.video_type ? (
@@ -928,24 +1086,7 @@ function MarketDetail({ m, onBack, initialSide, onTrade, balance }) {
         </div>
       ) : (
         <div className="chart-card">
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={data} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
-              <defs>
-                <linearGradient id="mainGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--yes)" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="var(--yes)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="t" hide />
-              <YAxis domain={[0, 100]} hide />
-              <Tooltip
-                contentStyle={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                labelFormatter={() => ""} formatter={(v) => [`${v}%`, "Sim"]}
-              />
-              <Area type="monotone" dataKey="p" stroke="var(--yes)" strokeWidth={2} fill="url(#mainGrad)" isAnimationActive={false} />
-            </AreaChart>
-          </ResponsiveContainer>
+          <MultiLineChart data={data} options={m.options} isMultiple={isMultiple} height={220} hideX={false} />
           <div className="tf-row">
             {TIMEFRAMES.map((t) => (
               <button key={t} className={`tf-btn ${tf === t ? "tf-active" : ""}`} onClick={() => setTf(t)}>{t}</button>
@@ -959,31 +1100,50 @@ function MarketDetail({ m, onBack, initialSide, onTrade, balance }) {
         <div className="outcome-cols"><span>Preço</span></div>
       </div>
       <div className="outcome-list">
-        <button className={`outcome-item ${side === "yes" ? "outcome-active-yes" : ""}`} onClick={() => setSide("yes")}>
-          <span>Sim</span>
-          <span className="outcome-price yes">{fmtPct(m.yes)}¢</span>
-        </button>
-        <button className={`outcome-item ${side === "no" ? "outcome-active-no" : ""}`} onClick={() => setSide("no")}>
-          <span>Não</span>
-          <span className="outcome-price no">{fmtPct(100 - m.yes)}¢</span>
-        </button>
+        {isMultiple ? (
+          m.options?.map(opt => (
+            <button key={opt.id} className={`outcome-item ${side === opt.id ? "outcome-active-yes" : ""}`} onClick={() => setSide(opt.id)}>
+              <span>{opt.title}</span>
+              <span className="outcome-price yes">{fmtPct(opt.price)}¢</span>
+            </button>
+          ))
+        ) : (
+          <>
+            <button className={`outcome-item ${side === "yes" ? "outcome-active-yes" : ""}`} onClick={() => setSide("yes")}>
+              <span>Sim</span>
+              <span className="outcome-price yes">{fmtPct(m.yes)}¢</span>
+            </button>
+            <button className={`outcome-item ${side === "no" ? "outcome-active-no" : ""}`} onClick={() => setSide("no")}>
+              <span>Não</span>
+              <span className="outcome-price no">{fmtPct(100 - m.yes)}¢</span>
+            </button>
+          </>
+        )}
       </div>
 
-      <div className={`trade-panel ${side}`}>
+      <div className={`trade-panel ${isMultiple ? 'yes' : side}`}>
         
         {confirmed && (
           <div style={{ position: 'absolute', inset: 0, background: 'var(--surface)', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text)', animation: 'slideup 0.2s ease-out' }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: side === 'yes' ? 'var(--yes-dim)' : 'var(--no-dim)', color: side === 'yes' ? 'var(--yes)' : 'var(--no)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: isMultiple || side === 'yes' ? 'var(--yes-dim)' : 'var(--no-dim)', color: isMultiple || side === 'yes' ? 'var(--yes)' : 'var(--no)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
               <Check size={32} />
             </div>
             <strong style={{ fontSize: 20, marginBottom: 4 }}>Ordem de R$ {numAmount.toFixed(2)} Enviada!</strong>
-            <span style={{ fontSize: 14, color: 'var(--text-faint)', fontWeight: 600 }}>Você comprou {shares.toFixed(2)} cotas de {side === 'yes' ? 'SIM' : 'NÃO'}</span>
+            <span style={{ fontSize: 14, color: 'var(--text-faint)', fontWeight: 600 }}>Você comprou {shares.toFixed(2)} cotas de {sideTitle}</span>
           </div>
         )}
 
-        <div className="trade-tabs">
-          <button className={side === "yes" ? "active" : ""} onClick={() => setSide("yes")}>Comprar Sim</button>
-          <button className={side === "no" ? "active" : ""} onClick={() => setSide("no")}>Comprar Não</button>
+        <div className="trade-tabs" style={isMultiple ? { overflowX: 'auto', flexWrap: 'nowrap', justifyContent: 'flex-start', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' } : {}}>
+          {isMultiple ? (
+            m.options?.map(opt => (
+              <button key={opt.id} className={side === opt.id ? "active" : ""} style={{ flex: '0 0 auto', padding: '10px 16px' }} onClick={() => setSide(opt.id)}>Comprar {opt.title}</button>
+            ))
+          ) : (
+            <>
+              <button className={side === "yes" ? "active" : ""} onClick={() => setSide("yes")}>Comprar Sim</button>
+              <button className={side === "no" ? "active" : ""} onClick={() => setSide("no")}>Comprar Não</button>
+            </>
+          )}
         </div>
 
         {isScheduled ? (
@@ -1028,8 +1188,8 @@ function MarketDetail({ m, onBack, initialSide, onTrade, balance }) {
               <div className="highlight"><span>Retorno potencial</span><span>R$ {payout.toFixed(2)} {numAmount > 0 && <em>(+R$ {profit.toFixed(2)})</em>}</span></div>
             </div>
 
-            <button className={`trade-submit ${side}`} onClick={handleTrade} disabled={numAmount <= 0 || numAmount > balance}>
-              {confirmed ? <><Check size={16} /> Ordem enviada</> : numAmount > balance ? "Saldo insuficiente" : `Comprar ${side === "yes" ? "Sim" : "Não"}`}
+            <button className={`trade-submit ${side === 'no' && !isMultiple ? 'no' : 'yes'}`} onClick={handleTrade} disabled={numAmount <= 0 || numAmount > balance}>
+              {confirmed ? <><Check size={16} /> Ordem enviada</> : numAmount > balance ? "Saldo insuficiente" : `Comprar ${sideTitle}`}
             </button>
             <div className="balance-note">Saldo disponível: R$ {balance.toFixed(2)}</div>
           </>
@@ -1718,9 +1878,16 @@ export default function PredictApp() {
       const { data } = await supabase.from('markets').select('*, categories(name, icon)').order('created_at', { ascending: false });
       if(data) {
         setMarkets(data.map((m, i) => {
-          const hist = makeHistory(i + 1, m.start_chance);
-          // Adicionar o valor atual real como o último ponto do gráfico para animar em tempo real
-          hist.push({ t: 'Agora', p: m.current_yes });
+          let hist;
+          if (m.market_type === 'multiple' && m.options) {
+            hist = makeMultipleHistory(i + 1, m.options);
+            const currentPoint = { t: 'Agora' };
+            m.options.forEach(opt => currentPoint[opt.id] = opt.price);
+            hist.push(currentPoint);
+          } else {
+            hist = makeBinaryHistory(i + 1, m.start_chance || 50);
+            hist.push({ t: 'Agora', yes: m.current_yes, no: 100 - m.current_yes });
+          }
           return {
             ...m,
             yes: m.current_yes,
@@ -1783,16 +1950,30 @@ export default function PredictApp() {
     await supabase.from('positions').insert({ user_id: userDbId, market_id: marketId, side, amount, shares, price, status: 'active' });
     const m = markets.find(x => x.id === marketId);
     if(m) {
-      // Dinâmica de Preço (AMM Simplificado): 
-      // R$ 10 apostados movem o preço em ~0.1% a 0.5% dependendo da volatilidade
       const impact = (amount / 100); 
-      let newYes = side === 'yes' ? (m.yes + impact) : (m.yes - impact);
-      newYes = Math.max(1, Math.min(99, newYes)); // Limita entre 1% e 99%
-      
-      await supabase.from('markets').update({ 
-        volume: Number(m.volume || 0) + amount,
-        current_yes: newYes
-      }).eq('id', marketId);
+      if (m.market_type === 'multiple' && m.options) {
+        const newOptions = m.options.map(opt => {
+          if (opt.id === side) {
+            return { ...opt, price: Math.min(99, opt.price + impact) };
+          } else {
+            return { ...opt, price: Math.max(1, opt.price - (impact / (m.options.length - 1))) };
+          }
+        });
+        const sum = newOptions.reduce((acc, o) => acc + o.price, 0);
+        const normalized = newOptions.map(opt => ({ ...opt, price: Number(((opt.price / sum) * 100).toFixed(2)) }));
+        
+        await supabase.from('markets').update({ 
+          volume: Number(m.volume || 0) + amount,
+          options: normalized
+        }).eq('id', marketId);
+      } else {
+        let newYes = side === 'yes' ? (m.yes + impact) : (m.yes - impact);
+        newYes = Math.max(1, Math.min(99, newYes));
+        await supabase.from('markets').update({ 
+          volume: Number(m.volume || 0) + amount,
+          current_yes: newYes
+        }).eq('id', marketId);
+      }
     }
   }, [userDbId, balance, markets]);
 
@@ -1809,11 +1990,22 @@ export default function PredictApp() {
     const m = markets.find(x => x.id === marketId);
     if(m) {
       const impact = (cashoutValue / 100);
-      let newYes = side === 'yes' ? (m.yes - impact) : (m.yes + impact);
-      newYes = Math.max(1, Math.min(99, newYes));
-      await supabase.from('markets').update({ 
-        current_yes: newYes
-      }).eq('id', marketId);
+      if (m.market_type === 'multiple' && m.options) {
+        const newOptions = m.options.map(opt => {
+          if (opt.id === side) {
+            return { ...opt, price: Math.max(1, opt.price - impact) };
+          } else {
+            return { ...opt, price: Math.min(99, opt.price + (impact / (m.options.length - 1))) };
+          }
+        });
+        const sum = newOptions.reduce((acc, o) => acc + o.price, 0);
+        const normalized = newOptions.map(opt => ({ ...opt, price: Number(((opt.price / sum) * 100).toFixed(2)) }));
+        await supabase.from('markets').update({ options: normalized }).eq('id', marketId);
+      } else {
+        let newYes = side === 'yes' ? (m.yes - impact) : (m.yes + impact);
+        newYes = Math.max(1, Math.min(99, newYes));
+        await supabase.from('markets').update({ current_yes: newYes }).eq('id', marketId);
+      }
     }
   }, [userDbId, balance, markets]);
 

@@ -353,7 +353,7 @@ function MarketsPage() {
 
   function openAdd() {
     if (!cats.length) return alert('Sem categorias no banco!');
-    setFormData({ title: '', category_id: cats[0].id, start_date: '', end_date: '', start_chance: 50, video_type: null, video_url: '', ai_counter_type: 'carros', ai_target_count: 0 });
+    setFormData({ title: '', category_id: cats[0].id, start_date: '', end_date: '', start_chance: 50, market_type: 'binary', options: [{ id: crypto.randomUUID(), title: 'Opção A', price: 50 }, { id: crypto.randomUUID(), title: 'Opção B', price: 50 }], video_type: null, video_url: '', ai_counter_type: 'carros', ai_target_count: 0 });
     setModalOpen(true);
   }
 
@@ -365,6 +365,8 @@ function MarketsPage() {
       start_date: m.start_date ? formatDateTimeLocal(m.start_date) : '',
       end_date: m.end_date ? formatDateTimeLocal(m.end_date) : '',
       start_chance: m.start_chance,
+      market_type: m.market_type || 'binary',
+      options: m.options || [{ id: crypto.randomUUID(), title: 'Opção A', price: 50 }, { id: crypto.randomUUID(), title: 'Opção B', price: 50 }],
       video_type: m.video_type || null,
       video_url: m.video_url || '',
       ai_counter_type: m.ai_counter_type || 'carros',
@@ -372,6 +374,23 @@ function MarketsPage() {
       ai_line_config: m.ai_line_config || {x1:0, y1:0.6, x2:1, y2:0.6}
     });
     setModalOpen(true);
+  }
+
+  async function handleAddCategory() {
+    const name = window.prompt("Digite o nome da nova Categoria:");
+    if (!name) return;
+    const icon = window.prompt("Digite o ícone (emoji) da Categoria:", "📌");
+    if (!icon) return;
+
+    const { data, error } = await supabase.from('categories').insert([{ name, icon }]).select();
+    if (error) {
+      alert("Erro ao criar categoria. Lembre-se de configurar a RLS da tabela 'categories' para permitir inserts: " + error.message);
+    } else {
+      if (data && data[0]) {
+        setCats(prev => [...prev, data[0]]);
+        setFormData(prev => ({ ...prev, category_id: data[0].id }));
+      }
+    }
   }
 
   async function saveMarket() {
@@ -393,9 +412,16 @@ function MarketsPage() {
         video_url: formData.video_url,
         ai_counter_type: formData.ai_counter_type,
         ai_target_count: parseInt(formData.ai_target_count) || 0,
-        ai_line_config: formData.ai_line_config
+        ai_line_config: formData.ai_line_config,
+        market_type: formData.market_type,
+        options: formData.market_type === 'multiple' ? formData.options : []
       }).eq('id', formData.id);
     } else {
+      if (formData.market_type === 'multiple') {
+        const sum = formData.options.reduce((a, b) => a + b.price, 0);
+        if (sum !== 100) return alert('A soma dos preços das opções deve ser exatamente 100%.');
+      }
+      
       await supabase.from('markets').insert({
         title: formData.title,
         category_id: formData.category_id,
@@ -409,16 +435,18 @@ function MarketsPage() {
         video_url: formData.video_url,
         ai_counter_type: formData.ai_counter_type,
         ai_target_count: parseInt(formData.ai_target_count) || 0,
-        ai_line_config: formData.ai_line_config
+        ai_line_config: formData.ai_line_config,
+        market_type: formData.market_type,
+        options: formData.market_type === 'multiple' ? formData.options : []
       });
     }
     setModalOpen(false);
     load();
   }
 
-  async function resolveMarket(id, side) {
-    if(!window.confirm(`Tem certeza que quer resolver como ${side.toUpperCase()}?`)) return;
-    await supabase.from('markets').update({ status: 'closed', winner_side: side }).eq('id', id);
+  async function resolveMarket(id, sideId, sideName = sideId) {
+    if(!window.confirm(`Tem certeza que quer resolver como ${sideName.toUpperCase()}?`)) return;
+    await supabase.from('markets').update({ status: 'closed', winner_side: sideId }).eq('id', id);
     load();
   }
 
@@ -528,8 +556,16 @@ function MarketsPage() {
                           </button>
                           {m.status === 'active' && (
                             <div className="flex items-center gap-1 border-l border-border pl-2 ml-1">
-                              <button onClick={() => resolveMarket(m.id, 'yes')} className="text-xs bg-yes/10 text-yes px-2 py-1 rounded hover:bg-yes hover:text-bg font-bold transition">Venceu SIM</button>
-                              <button onClick={() => resolveMarket(m.id, 'no')} className="text-xs bg-no/10 text-no px-2 py-1 rounded hover:bg-no hover:text-bg font-bold transition">Venceu NÃO</button>
+                              {m.market_type === 'multiple' && m.options ? (
+                                m.options.map(opt => (
+                                  <button key={opt.id} onClick={() => resolveMarket(m.id, opt.id, opt.title)} className="text-xs bg-yes/10 text-yes px-2 py-1 rounded hover:bg-yes hover:text-bg font-bold transition">Venceu {opt.title}</button>
+                                ))
+                              ) : (
+                                <>
+                                  <button onClick={() => resolveMarket(m.id, 'yes')} className="text-xs bg-yes/10 text-yes px-2 py-1 rounded hover:bg-yes hover:text-bg font-bold transition">Venceu SIM</button>
+                                  <button onClick={() => resolveMarket(m.id, 'no')} className="text-xs bg-no/10 text-no px-2 py-1 rounded hover:bg-no hover:text-bg font-bold transition">Venceu NÃO</button>
+                                </>
+                              )}
                             </div>
                           )}
                         </>
@@ -599,15 +635,49 @@ function MarketsPage() {
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-text-dim mb-1">Categoria</label>
+                  <label className="block text-sm font-semibold text-text-dim mb-1 flex justify-between items-center">
+                    Categoria
+                    <button type="button" onClick={handleAddCategory} className="text-yes hover:text-white text-xs px-2 py-0.5 rounded bg-yes/20 hover:bg-yes/40 transition-colors">
+                      + Nova
+                    </button>
+                  </label>
                   <select value={formData.category_id} onChange={e => setFormData({...formData, category_id: e.target.value})} className="w-full bg-surface2 border border-border rounded-lg px-4 py-2 text-white outline-none focus:border-yes appearance-none">
                     {cats.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                   </select>
                 </div>
-                {!formData.id && (
+                {!formData.id && formData.market_type === 'binary' && (
                   <div>
                     <label className="block text-sm font-semibold text-text-dim mb-1">Preço (Probabilidade %)</label>
                     <input type="number" min="1" max="99" value={formData.start_chance} onChange={e => setFormData({...formData, start_chance: e.target.value})} className="w-full bg-surface2 border border-border rounded-lg px-4 py-2 text-white outline-none focus:border-yes" />
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-border mt-2">
+                <label className="block text-sm font-semibold text-text-dim mb-2">Tipo de Mercado</label>
+                <div className="flex gap-4 mb-4">
+                  <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
+                    <input type="radio" checked={formData.market_type === 'binary'} onChange={() => setFormData({...formData, market_type: 'binary'})} className="accent-yes" /> Binário (Sim / Não)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
+                    <input type="radio" checked={formData.market_type === 'multiple'} onChange={() => setFormData({...formData, market_type: 'multiple'})} className="accent-yes" /> Múltipla Escolha
+                  </label>
+                </div>
+                
+                {formData.market_type === 'multiple' && (
+                  <div className="bg-surface2 p-4 rounded-xl border border-border mb-4 space-y-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-sm font-bold text-white">Opções</h4>
+                      <button type="button" onClick={() => setFormData({...formData, options: [...formData.options, {id: crypto.randomUUID(), title: `Opção ${formData.options.length + 1}`, price: 0}]})} className="text-xs bg-surface border border-border px-3 py-1 rounded hover:bg-border transition-colors text-white">+ Adicionar Opção</button>
+                    </div>
+                    {formData.options.map((opt, idx) => (
+                      <div key={opt.id} className="flex gap-2 items-center">
+                        <input type="text" value={opt.title} onChange={e => { const newOpts = [...formData.options]; newOpts[idx].title = e.target.value; setFormData({...formData, options: newOpts}); }} placeholder="Título da Opção" className="flex-1 bg-surface border border-border rounded-lg px-3 py-1.5 text-white outline-none focus:border-yes text-sm" />
+                        <input type="number" min="0" max="100" value={opt.price} onChange={e => { const newOpts = [...formData.options]; newOpts[idx].price = Number(e.target.value); setFormData({...formData, options: newOpts}); }} placeholder="%" className="w-20 bg-surface border border-border rounded-lg px-3 py-1.5 text-white outline-none focus:border-yes text-sm" />
+                        <button type="button" onClick={() => { const newOpts = formData.options.filter(o => o.id !== opt.id); setFormData({...formData, options: newOpts}); }} className="p-2 text-no hover:bg-no/20 rounded"><X size={16}/></button>
+                      </div>
+                    ))}
+                    <div className="text-xs text-text-dim text-right mt-1">Soma atual: {formData.options.reduce((acc, o) => acc + o.price, 0)}% (Deve somar 100%)</div>
                   </div>
                 )}
               </div>
