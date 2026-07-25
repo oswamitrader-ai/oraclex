@@ -663,12 +663,21 @@ function LiveMarketCard({ m, onTrade, balance }) {
     <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 24 }}>
       {/* Video Area */}
       <div style={{ position: 'relative', width: '100%', background: '#111', aspectRatio: '16/9', overflow: 'hidden' }}>
-        <img 
-          src={`http://192.168.2.112:5000/video_feed/${m.id}`} 
-          alt="Foresight AI Stream"
-          style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0 }}
-          onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-        />
+        {m.video_type === 'youtube' ? (
+          <iframe 
+            src={`https://www.youtube.com/embed/${getYoutubeId(m.video_url)}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1`}
+            style={{ width: '100%', height: '100%', border: 'none', position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
+            allow="autoplay; encrypted-media"
+            title="Live Stream"
+          />
+        ) : (
+          <img 
+            src={`http://192.168.2.112:5000/video_feed/${m.id}`} 
+            alt="Foresight AI Stream"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0 }}
+            onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+          />
+        )}
         <div style={{ display: 'none', position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: 13, fontWeight: 600, textAlign: 'center', padding: 20 }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
             <Tv size={32} opacity={0.5} />
