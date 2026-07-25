@@ -141,8 +141,16 @@ def get_stream_url(video_url, video_type):
     return video_url
 
 def process_market(market):
+    """
+    Roda em uma thread separada para cada mercado ativo.
+    Faz a leitura do feed de vídeo, processa o modelo YOLOv8, e atualiza o Supabase.
+    """
     market_id = market['id']
     active_markets[market_id] = True
+    
+    # Criar um client supabase INDEPENDENTE para esta thread para evitar colisão de socket no Windows (WinError 10035)
+    local_supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    
     print(f"\n--- Iniciando Processamento AI para o mercado: {market['title']} ---")
     
     target_class_id = COCO_CLASSES.get(market.get('ai_counter_type', 'carros'), 2)
@@ -232,36 +240,39 @@ def process_market(market):
                 latest_frames[market_id] = buffer.tobytes()
 
             if time.time() - last_update_time > 3.0:
-                check_resp = supabase.table('markets').select('*').eq('id', market_id).execute()
-                if not check_resp.data or check_resp.data[0]['status'] != 'active':
-                    print(f"[{market['title']}] Fechado ou excluído pelo Admin.")
-                    break
-
-                m_data = check_resp.data[0]
-                
-                # Atualiza a posição da linha caso o admin tenha alterado no painel
-                current_line_y_percent = m_data.get('ai_line_y') or current_line_y_percent
-                
-                if m_data.get('end_date'):
-                    end_date = datetime.datetime.fromisoformat(m_data['end_date'].replace('Z', '+00:00'))
-                    if datetime.datetime.now(datetime.timezone.utc) >= end_date:
-                        print(f"\n⏰ TEMPO ESGOTADO para o mercado: '{market['title']}'!")
-                        target = m_data.get('ai_target_count') or 0
-                        winner = 'yes' if local_count >= target else 'no'
-                        
-                        print(f"🏁 RESOLUÇÃO AUTOMÁTICA: Venceu {winner.upper()} (Alvo: {target}, Placar Final: {local_count})")
-                        supabase.table('markets').update({
-                            'status': 'closed',
-                            'winner_side': winner,
-                            'ai_current_count': local_count
-                        }).eq('id', market_id).execute()
+                try:
+                    check_resp = local_supabase.table('markets').select('*').eq('id', market_id).execute()
+                    if not check_resp.data or check_resp.data[0]['status'] != 'active':
+                        print(f"[{market['title']}] Fechado ou excluído pelo Admin.")
                         break
 
-                if local_count != current_db_count:
-                    print(f"[{market['title']}] Supabase contagem: {local_count}")
-                    supabase.table('markets').update({'ai_current_count': local_count}).eq('id', market_id).execute()
-                    current_db_count = local_count
-                last_update_time = time.time()
+                    m_data = check_resp.data[0]
+                    
+                    # Atualiza a posição da linha caso o admin tenha alterado no painel
+                    current_line_y_percent = m_data.get('ai_line_y') or current_line_y_percent
+                    
+                    if m_data.get('end_date'):
+                        end_date = datetime.datetime.fromisoformat(m_data['end_date'].replace('Z', '+00:00'))
+                        if datetime.datetime.now(datetime.timezone.utc) >= end_date:
+                            print(f"\n⏰ TEMPO ESGOTADO para o mercado: '{market['title']}'!")
+                            target = m_data.get('ai_target_count') or 0
+                            winner = 'yes' if local_count >= target else 'no'
+                            
+                            print(f"🏁 RESOLUÇÃO AUTOMÁTICA: Venceu {winner.upper()} (Alvo: {target}, Placar Final: {local_count})")
+                            local_supabase.table('markets').update({
+                                'status': 'closed',
+                                'winner_side': winner,
+                                'ai_current_count': local_count
+                            }).eq('id', market_id).execute()
+                            break
+
+                    if local_count != current_db_count:
+                        print(f"[{market['title']}] Supabase contagem: {local_count}")
+                        local_supabase.table('markets').update({'ai_current_count': local_count}).eq('id', market_id).execute()
+                        current_db_count = local_count
+                    last_update_time = time.time()
+                except Exception as e:
+                    print(f"[{market['title']}] Erro de rede ao sincronizar com Supabase: {e}")
 
     except Exception as e:
         print(f"Erro no processamento de {market['title']}: {e}")
@@ -288,21 +299,19 @@ def sweeper():
             for m in markets:
                 m_id = m['id']
                 current_active.add(m_id)
-                # Se o mercado está ativo no banco e a thread não está rodando...
-                if m_id not in active_markets or not active_markets[m_id]:
-                    t = threading.Thread(target=process_market, args=(m,), daemon=True)
-                    t.start()
-                    time.sleep(2)
-            
-            # Parar threads de mercados que não estão mais no BD como ativos
+                if not active_markets.get(m_id):
+                    print(f"\n--- Iniciando Processamento AI para o mercado: {m['title']} ---")
+                    active_markets[m_id] = True
+                    threading.Thread(target=process_market, args=(m,), daemon=True).start()
+                    
             for m_id in list(active_markets.keys()):
-                if active_markets[m_id] and m_id not in current_active:
-                    print(f"Desligando processamento do mercado {m_id} (não está mais ativo)")
+                if m_id not in current_active:
+                    print(f"\n--- Parando Processamento AI do mercado: {m_id} ---")
                     active_markets[m_id] = False
-
         except Exception as e:
-            print("Erro no sweeper:")
-            traceback.print_exc()
+            print(f"[Sweeper] Erro temporário ao consultar mercados: {e}")
+            
+        time.sleep(5)
         
         time.sleep(10)
 
