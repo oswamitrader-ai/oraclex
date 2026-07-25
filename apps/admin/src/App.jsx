@@ -309,6 +309,30 @@ function MarketsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [formData, setFormData] = useState(null);
   const [filter, setFilter] = useState("ativas"); // ativas | encerradas
+  const [draggingPoint, setDraggingPoint] = useState(null); // 'p1' or 'p2'
+
+  const handlePointerDown = (point) => (e) => {
+    e.preventDefault();
+    setDraggingPoint(point);
+  };
+  
+  const handlePointerMove = (e) => {
+    if (!draggingPoint || !formData) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+    const y = Math.min(Math.max((e.clientY - rect.top) / rect.height, 0), 1);
+    
+    setFormData(prev => ({
+      ...prev,
+      ai_line_config: {
+        ...(prev.ai_line_config || {x1:0,y1:0.6,x2:1,y2:0.6}),
+        [draggingPoint === 'p1' ? 'x1' : 'x2']: x,
+        [draggingPoint === 'p1' ? 'y1' : 'y2']: y
+      }
+    }));
+  };
+
+  const handlePointerUp = () => setDraggingPoint(null);
 
   useEffect(() => {
     load();
@@ -345,7 +369,7 @@ function MarketsPage() {
       video_url: m.video_url || '',
       ai_counter_type: m.ai_counter_type || 'carros',
       ai_target_count: m.ai_target_count || 0,
-      ai_line_y: m.ai_line_y !== undefined && m.ai_line_y !== null ? m.ai_line_y : 0.6
+      ai_line_config: m.ai_line_config || {x1:0, y1:0.6, x2:1, y2:0.6}
     });
     setModalOpen(true);
   }
@@ -369,7 +393,7 @@ function MarketsPage() {
         video_url: formData.video_url,
         ai_counter_type: formData.ai_counter_type,
         ai_target_count: parseInt(formData.ai_target_count) || 0,
-        ai_line_y: parseFloat(formData.ai_line_y) || 0.6
+        ai_line_config: formData.ai_line_config
       }).eq('id', formData.id);
     } else {
       await supabase.from('markets').insert({
@@ -385,7 +409,7 @@ function MarketsPage() {
         video_url: formData.video_url,
         ai_counter_type: formData.ai_counter_type,
         ai_target_count: parseInt(formData.ai_target_count) || 0,
-        ai_line_y: parseFloat(formData.ai_line_y) || 0.6
+        ai_line_config: formData.ai_line_config
       });
     }
     setModalOpen(false);
@@ -671,7 +695,15 @@ function MarketsPage() {
                          )}
                          
                          {/* Linha de contagem visual via SVG */}
-                         <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" viewBox="0 0 100 100" preserveAspectRatio="none">
+                         <svg 
+                           className="absolute inset-0 w-full h-full z-10 touch-none" 
+                           style={{ cursor: draggingPoint ? 'grabbing' : 'default' }}
+                           viewBox="0 0 100 100" 
+                           preserveAspectRatio="none"
+                           onPointerMove={handlePointerMove}
+                           onPointerUp={handlePointerUp}
+                           onPointerLeave={handlePointerUp}
+                         >
                             <line 
                               x1={`${(formData.ai_line_config?.x1 ?? 0) * 100}`} 
                               y1={`${(formData.ai_line_config?.y1 ?? 0.6) * 100}`} 
@@ -680,7 +712,29 @@ function MarketsPage() {
                               stroke="red" 
                               strokeWidth="1.5" 
                               strokeLinecap="round"
-                              style={{ filter: 'drop-shadow(0px 0px 4px red)' }}
+                              style={{ filter: 'drop-shadow(0px 0px 4px red)', pointerEvents: 'none' }}
+                            />
+                            {/* Ponto Arrastável Inicial */}
+                            <circle 
+                              cx={`${(formData.ai_line_config?.x1 ?? 0) * 100}`} 
+                              cy={`${(formData.ai_line_config?.y1 ?? 0.6) * 100}`} 
+                              r="4" 
+                              fill="white" 
+                              stroke="red" 
+                              strokeWidth="1"
+                              style={{ cursor: 'grab' }}
+                              onPointerDown={handlePointerDown('p1')}
+                            />
+                            {/* Ponto Arrastável Final */}
+                            <circle 
+                              cx={`${(formData.ai_line_config?.x2 ?? 1) * 100}`} 
+                              cy={`${(formData.ai_line_config?.y2 ?? 0.6) * 100}`} 
+                              r="4" 
+                              fill="white" 
+                              stroke="red" 
+                              strokeWidth="1"
+                              style={{ cursor: 'grab' }}
+                              onPointerDown={handlePointerDown('p2')}
                             />
                          </svg>
                       </div>
